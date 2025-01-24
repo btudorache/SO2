@@ -1,0 +1,69 @@
+
+1. Instalare -----------------------------------------------------------------------------------------------------
+Instalati wsl 2 din PowerShell:
+wsl -l -o # listeaza distributii disponibile
+wsl --install -d Ubuntu-20.04 # daca Ubuntu-20.04 este in lista de mai sus, instaleaza-l pe asta, altfel alt Ubuntu
+
+In wsl:
+sudo apt update
+sudo apt install docker # daca nu e instalat deja
+sudo apt install docker-compose
+sudo apt install build-essentials
+sudo groupadd docker # pentru a putea rula docker fara sudo (IMPORTANT)
+sudo usermod -aG docker $USER # pentru a putea rula docker fara sudo (IMPORTANT)
+newgrp docker # pentru a putea rula docker fara sudo (IMPORTANT)
+
+Suntem pe wsl si vom clona repo-ul:
+git clone --depth=1 https://github.com/linux-kernel-labs/linux.git # argumentul --depth=1 nu va clona toate commiturile deci va dura mai putin
+# daca nu este merge-uit acest PR https://github.com/linux-kernel-labs/linux/pull/340 la momentul citirii acestui ghid urmariti si comenzile comentate de mai jos:
+# cd linux
+# cp ~/Downloads/0001-Solve-make-console-bugs-for-docker.patch .
+# git apply 0001-Solve-make-console-bugs-for-docker.patch
+cd linux/tools/labs # directorul in care ne vom distra in acest semestru
+make docker-kernel # pornim dockerul, va dura ceva, dar in final vom avea un shell in docker
+
+Suntem in docker:
+whoami # trebuie sa zica ubuntu, asa stim ca suntem in docker
+cd /linux/tools/labs # intram in directorul de distractie
+make -j $(nproc) console # prima data o sa dureze destul de mult aceasta comanda deoarece se va compila kernelul 
+# alternativ poate fi folosita comanda `make -j $(nproc) boot`
+
+Dupa ce am rulat comanda anterioara ea ar trebui sa se termine in urmatorul prompter `root@qemux86`
+#Pentru a opri masina virtuala se foloseste combinatia de taste `ctrl + a (pauza) x`
+#Pentru a iesi din Docker se foloste comanda exit
+exit
+
+2. Rulare uzuala la laborator (3 terminale de wsl) ------------------------------------------------------------------------------------------------:
+# Terminal 1 wsl (in acest terminal vom porni masina virtuala):
+cd linux/tools/labs # navigam in directorul de joaca
+make docker-kernel # porneste dockerul
+# in docker
+cd /linux/tools/labs # stiti voi
+make console # pornim masina virtuala de so2
+# din acest moment (daca totul e in regula) suntem in masina virtuala
+# Pentru a opri masina virtuala se foloseste combinatia de taste `ctrl + a (pauza) x`
+# Pentru a iesi din Docker se foloste comanda exit
+
+# Terminal 2 wsl (in acest terminal vom compila module):
+cd linux/tools/labs
+docker ps # asa aflam id-ul dockerului (prima coloana) si il copiem
+docker exec -it <container_id sau container_name> bash
+# suntem in docker
+cd /linux/tools/labs
+# generam skeletul pt laboratorul curent
+LABS=<nume_laborator> make skels
+make build # compilam module
+# Pentru a iesi din Docker se foloste comanda exit
+
+#Terminal 3 wsl (in acest temrinal vom edita):
+cd linux/tools/labs
+docker ps # asa aflam id-ul dockerului (prima coloana) si il copiem
+docker exec -it <container_id sau container_name> bash
+# suntem in docker
+cd /linux/tools/labs
+# editam surse din skels/...
+# Pentru a iesi din Docker se foloste comanda exit
+
+
+
+
