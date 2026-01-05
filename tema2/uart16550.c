@@ -52,7 +52,6 @@ MODULE_PARM_DESC(option, "Port option: 1=COM1, 2=COM2, 3=both (default=3)");
 struct uart_port {
     unsigned int            iobase;
     int                    irq;
-    const char            *name;
     spinlock_t             lock;
     DECLARE_KFIFO(rxfifo, unsigned char, FIFO_SIZE);
     DECLARE_KFIFO(txfifo, unsigned char, FIFO_SIZE);
@@ -90,6 +89,9 @@ static void hw_init(struct uart_port *port)
     /* 8N1 mode */
     io_write(port, REG_LCR, 0x03);
 
+    /* Enable OUT2 (required for interrupts) */
+    io_write(port, REG_MCR, 0x08);
+
     /* Set baud rate to 9600 */
     io_write(port, REG_LCR, io_read(port, REG_LCR) | 0x80);  /* Set DLAB */
     io_write(port, REG_DLL, 12);  /* 115200/9600 = 12 */
@@ -105,32 +107,45 @@ static void hw_init(struct uart_port *port)
 static irqreturn_t uart_interrupt(int irq, void *dev_id)
 {
     struct uart_port *port = dev_id;
-    unsigned char iir, lsr;
+    unsigned char iir;
     char ch;
     unsigned long flags;
+    int handled = 0;
 
     spin_lock_irqsave(&port->lock, flags);
 
-    iir = io_read(port, REG_IIR) & 0x0f;
+    /* Loop to handle all pending interrupts */
+    while (1) {
+        iir = io_read(port, REG_IIR);
 
-    switch (iir) {
-    case 0x04: /* Received data */
-        while ((lsr = io_read(port, REG_LSR)) & LSR_DR) {
-            ch = io_read(port, REG_RBR);
-            kfifo_in(&port->rxfifo, &ch, 1);
+        /* Bit 0 = 1 means no interrupt pending */
+        if (iir & 0x01)
+            break;
+
+        handled = 1;
+
+        switch (iir & 0x0e) {
+        case 0x04: /* Received data available */
+        case 0x0c: /* Character timeout */
+            while (io_read(port, REG_LSR) & LSR_DR) {
+                ch = io_read(port, REG_RBR);
+                kfifo_in(&port->rxfifo, &ch, 1);
+            }
+            wake_up_interruptible(&port->rxwait);
+            break;
+
+        case 0x02: /* Transmitter holding register empty */
+            while ((io_read(port, REG_LSR) & LSR_THRE) &&
+                   kfifo_out(&port->txfifo, &ch, 1)) {
+                io_write(port, REG_THR, ch);
+            }
+            wake_up_interruptible(&port->txwait);
+            break;
         }
-        wake_up_interruptible(&port->rxwait);
-        break;
-
-    case 0x02: /* Transmitter empty */
-        if (kfifo_out(&port->txfifo, &ch, 1))
-            io_write(port, REG_THR, ch);
-        wake_up_interruptible(&port->txwait);
-        break;
     }
 
     spin_unlock_irqrestore(&port->lock, flags);
-    return IRQ_HANDLED;
+    return handled ? IRQ_HANDLED : IRQ_NONE;
 }
 
 static int uart_open(struct inode *inode, struct file *file)
@@ -166,16 +181,19 @@ static ssize_t uart_write(struct file *file, const char __user *buf,
 {
     struct uart_port *port = file->private_data;
     unsigned int copied;
+    unsigned long flags;
     char ch;
 
     if (kfifo_from_user(&port->txfifo, buf, count, &copied))
         return -EFAULT;
 
     /* Start transmission if TX empty */
-    if (io_read(port, REG_LSR) & LSR_THRE) {
-        if (kfifo_out(&port->txfifo, &ch, 1))
-            io_write(port, REG_THR, ch);
+    spin_lock_irqsave(&port->lock, flags);
+    while ((io_read(port, REG_LSR) & LSR_THRE) &&
+           kfifo_out(&port->txfifo, &ch, 1)) {
+        io_write(port, REG_THR, ch);
     }
+    spin_unlock_irqrestore(&port->lock, flags);
 
     return copied;
 }
@@ -228,7 +246,7 @@ static int init_port(struct uart_port *port, int minor)
     INIT_KFIFO(port->txfifo);
 
     /* Request I/O region before doing anything else */
-    if (!request_region(port->iobase, PORT_SIZE, port->name)) {
+    if (!request_region(port->iobase, PORT_SIZE, MODULE_NAME)) {
         pr_err("uart16550: cannot get IO region %x\n", port->iobase);
         ret = -EBUSY;
         goto fail_io;
@@ -236,7 +254,7 @@ static int init_port(struct uart_port *port, int minor)
 
     /* Request IRQ next */
     ret = request_irq(port->irq, uart_interrupt, IRQF_SHARED,
-                     port->name, port);
+                     MODULE_NAME, port);
     if (ret) {
         pr_err("uart16550: cannot get IRQ %d\n", port->irq);
         goto fail_irq;
@@ -306,7 +324,6 @@ static int __init uart16550_init(void)
     if (option == OPTION_COM1 || option == OPTION_BOTH) {
         ports[0].iobase = COM1_ADDR;
         ports[0].irq = IRQ_COM1;
-        ports[0].name = "uart16550_com1";
         ret = init_port(&ports[0], first_minor);
         if (ret)
             goto fail_init;
@@ -315,7 +332,6 @@ static int __init uart16550_init(void)
     if (option == OPTION_COM2 || option == OPTION_BOTH) {
         ports[1].iobase = COM2_ADDR;
         ports[1].irq = IRQ_COM2;
-        ports[1].name = "uart16550_com2";
         ret = init_port(&ports[1], (option == OPTION_BOTH) ? (first_minor + 1) : first_minor);
         if (ret) {
             if (option == OPTION_BOTH)
