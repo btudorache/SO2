@@ -14,4 +14,4 @@ Temele de la Sisteme de Operare 2022-2023. Au ca scop dezvoltarea unor module si
 
 * Tema 4 - Prototipul unui modul care implementeaza un protocol de transport in kernel care lucreaza cu Ethernet datagrams
 
-* Tema 4 - Prototipul unui VMM device bazat pe KVM
+* Tema 7 - Prototipul unui VMM device bazat pe KVM
