@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Kbuild file for the SOVMM kernel module.
+# Built from two source files:
+#   sovmm_main.c    - C code (VMX setup, VMCS, EPT, ioctls)
+#   sovmm_vmx_asm.S - Assembly (VMLAUNCH/VMRESUME, VM exit handler)
+#
+obj-m += sovmm.o
+sovmm-objs := sovmm_main.o sovmm_vmx_asm.o
