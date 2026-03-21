@@ -11,3 +11,6 @@ Temele de la Sisteme de Operare 2022-2023. Au ca scop dezvoltarea unor module si
 * Tema 2 - Implementarea unui driver pentru **port serial UART 16550**.
 
 * Tema 3 - Prototipul unui modul RAID 1 care asigura sincronizare si consistenta intre 2 disk-uri
+
+* Tema 4 - Prototipul unui modul care implementeaza un protocol de transport in kernel care lucreaza cu Ethernet datagrams
+
